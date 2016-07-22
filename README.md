@@ -16,9 +16,39 @@
 
 ## 如何使用
 
+### 初始化virtualenv环境及安装package
+
+* 建议使用pyenv安装并创建virtualenv
+* 当前只支持``python3``
+* 安装依赖包: pip install -r requirements
+
 ### 启动服务
 
+执行如下命令启动
+```
+$ cd xtran
+$ export PYTHONPATH=$(pwd)
+$ python -m xtran.app
+```
+
+如果正常启动,则应该有如下输出
+
+```
+INFO:werkzeug: * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+```
+
+当前可以通过观察一下日志文件:
+
+* depth.log: 等待交易的订单列表
+* order.log: 执行交易的订单记录
+* trade.log: 交易记录
+
 ### 运行模拟客户端
+执行如下命令开始测试:
+
+```
+$ python test_client.py
+```
 
 ## Todo
 
