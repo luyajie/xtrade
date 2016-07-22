@@ -1,4 +1,5 @@
 import logging
+import time
 
 from flask import request, jsonify, Flask
 
@@ -34,10 +35,19 @@ def do_trade():
     return jsonify({'order_id': order.id, 'result': True})
 
 
-@app.route('/cancel', methods=['POST'])
+@app.route('/cancel_order.do', methods=['POST'])
 def cancel_order():
     data = request.get_json()
-    return jsonify({'order_id': data['order_id'], 'result': False})
+    order_id = data['order_id']
+    queue.put(CancelOrderEvent(order_id))
+    result = False
+    for i in range(10):
+        # fixme: wait for the CancelEvent processed and will block the process
+        time.sleep(0.1)
+        trades = trade_store.get(order_id)
+        if trades and trades[-1].is_canceled:
+            result = True
+    return jsonify({'order_id': order_id, 'result': result})
 
 
 def run_app():

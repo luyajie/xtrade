@@ -40,6 +40,10 @@ class Trade(object):
     def is_done(self):
         return self.status.startswith('all')
 
+    @property
+    def is_canceled(self):
+        return self.status.endswith('cancel')
+
     def __repr__(self):
         return "%s<%s, %s, %s, %s, %s>" % (
             self.__class__.__name__, self.order_id, self.order_type, self.price, self.amount, self.status)
