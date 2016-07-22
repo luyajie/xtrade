@@ -10,6 +10,24 @@ class InvalidOrderType(Exception):
     pass
 
 
+class OrderNotFound(Exception):
+    pass
+
+
+class OrderStore(object):
+    def __init__(self):
+        self._data = {}
+
+    def save(self, order):
+        self._data[order.id] = order
+
+    def get(self, order_id):
+        try:
+            return self._data[order_id]
+        except KeyError:
+            raise OrderNotFound(order_id)
+
+
 class Order(object):
     TYPE = ''
     
@@ -29,7 +47,7 @@ class Order(object):
         if self.amount == amount:
             return None
         amount = self.amount - amount
-        return self.__class__(self.symbol, amount, self.timestamp, self.price)
+        return self.__class__(self.id, self.symbol, amount, self.timestamp, self.price)
 
     def __str__(self):
         return "%s<%s, %s, %s>" % (self.__class__.__name__, self.price, self.amount, self.timestamp)

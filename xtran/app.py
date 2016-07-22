@@ -1,16 +1,17 @@
 import logging
-import uuid
 
 from flask import request, jsonify, Flask
 
-from .event import Event
-from .manager import TransactionManager
+from .event import NewOrderEvent, CancelOrderEvent
+from .manager import TradeManager, TradeStore
 from .message_queue import LocalQueue
-from .order import Order, InvalidOrderType
+from .order import Order, OrderStore, InvalidOrderType
 
 
 app = Flask(__name__)
 queue = LocalQueue()
+trade_store = TradeStore()
+order_store = OrderStore()
 
 
 @app.errorhandler(InvalidOrderType)
@@ -28,7 +29,8 @@ def do_trade():
         logging.exception(e)
         raise
     order = Order.factory(data['type'], data['symbol'], data['amount'], data.get('price', None))
-    queue.put(Event('new', order))
+    order_store.save(order)
+    queue.put(NewOrderEvent(order.id))
     return jsonify({'order_id': order.id, 'result': True})
 
 
@@ -41,8 +43,7 @@ def cancel_order():
 def run_app():
     logging.basicConfig(level=logging.DEBUG)
 
-    manager = TransactionManager(queue)
-    manager.daemon = True
+    manager = TradeManager(queue, trade_store, order_store)
     manager.start()
     app.run()
 
