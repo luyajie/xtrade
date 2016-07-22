@@ -50,6 +50,14 @@ INFO:werkzeug: * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
 $ python test_client.py
 ```
 
+## TEST
+
+现在测试的覆盖率很低,还需要补足.
+
+```
+$ py.test tests/ -v -s
+```
+
 ## Todo
 
 * 数据写入数据库

@@ -4,6 +4,7 @@ import logging
 import threading
 
 from .event import NewOrderEvent, CancelOrderEvent
+from .symbol import get_symbol_price_range, get_symbol_price
 
 
 LOG = logging.getLogger(__name__)
@@ -72,8 +73,9 @@ class TradeManager(threading.Thread):
                  trade_log_file='trade.log', order_log_file='order.log', depth_log_file='depth.log'):
         super().__init__()
         self.daemon = True
-        self._buy_queue = []
-        self._sell_queue = []
+        self._buy_queue_map = {}  # symbol_id => []
+        self._sell_queue_map = {}  # symbol_id => []
+        self._symbol_price_map = {}  # symbol_id => price
         self._order_map = {}  # unfinished orders: order_id => order
         self.msg_queue = message_queue  # read_only
         self.trade_store = trade_store  # write_only
@@ -90,7 +92,7 @@ class TradeManager(threading.Thread):
                 if isinstance(event, NewOrderEvent):
                     order = self._get_order(event.order_id)
                     self._add_order(order)
-                    self._running_trade()
+                    self._running_trade(order.symbol)
                 elif isinstance(event, CancelOrderEvent):
                     self._remove_order(event.order_id)
                 elif event == 'timeout':
@@ -119,9 +121,13 @@ class TradeManager(threading.Thread):
     def _add_order(self, order):
         self._order_map[order.id] = order
         if order.is_sell:
-            heapq.heappush(self._sell_queue, order)
+            sell_queue = self._sell_queue_map.setdefault(order.symbol, [])
+            heapq.heappush(sell_queue, order)
+            self._sell_queue_map[order.symbol] = sell_queue
         else:
-            heapq.heappush(self._buy_queue, order)
+            buy_queue = self._buy_queue_map.setdefault(order.symbol, [])
+            heapq.heappush(buy_queue, order)
+            self._buy_queue_map[order.symbol] = buy_queue
 
     def _remove_order(self, order_id):
         order = self._order_map.pop(order_id, None)
@@ -134,9 +140,10 @@ class TradeManager(threading.Thread):
         self.trade_store.save(trade)
         self._write_order_log(trade)
 
-    def _running_trade(self):
+    def _running_trade(self, symbol_id):
         """Check all the BuyOrders and the SellOrders until no trade is available."""
-        buy_queue, sell_queue = self._buy_queue, self._sell_queue
+        buy_queue = self._buy_queue_map.setdefault(symbol_id, [])
+        sell_queue = self._sell_queue_map.setdefault(symbol_id, [])
         while buy_queue and sell_queue:
             buy_order = self._pop_order(buy_queue)
             if buy_order is None:
@@ -185,6 +192,9 @@ class TradeManager(threading.Thread):
         buy_order_id, sell_order_id = buy_order.id, sell_order.id
         amount = min(sell_order.amount, buy_order.amount)
         price = self.get_trade_price(buy_order, sell_order)
+        # fixme: freeze the `symbol` when the highest or the lowest limit reached
+        # price changed
+        self._symbol_price_map[buy_order.symbol] = price
         self._write_trade_log(price, amount)
         LOG.debug('Trade available. amount: %s, price: %s', amount, price)
         buy_trade = Trade.do(buy_order, price, amount)
@@ -205,11 +215,14 @@ class TradeManager(threading.Thread):
             self._order_map[sell_order.id] = sell_order
         return buy_order, sell_order
 
-    @staticmethod
-    def get_trade_price(buy_order, sell_order):
+    def get_trade_price(self, buy_order, sell_order):
         """Return the price for this trade."""
-        # todo: current price should return when both sell_order and buy_order are `market'
-        return sell_order.price
+        min_price, max_price = get_symbol_price_range(sell_order.symbol)
+        if sell_order.price >= min_price:
+            return sell_order.price
+        if buy_order.price <= max_price:
+            return buy_order.price
+        return self._symbol_price_map.get(sell_order.symbol, get_symbol_price(sell_order.symbol))
 
     def _write_trade_log(self, price, amount):
         with open(self.trade_log_file, 'a') as f:
@@ -222,19 +235,23 @@ class TradeManager(threading.Thread):
                 '%(amount)s %(status)s\n' % order_trade.__dict__)
 
     def _write_depth_log(self):
+        def write_log(title_, queue_):
+            with open(self.depth_log_file, 'a') as f_:
+                f_.write('%s\n' % (title_,))
+                for i in range(min(len(queue_), 20)):
+                    order = heapq.heappop(queue_)
+                    f_.write('%(id)s %(timestamp)s %(symbol)s %(type)s %(price)s %(amount)s\n' % dict(
+                        id=order.id, timestamp=order.timestamp, symbol=order.symbol, type=order.TYPE,
+                        price=order.price, amount=order.amount))
+        symbols_list = list(self._buy_queue_map.keys()) + list(self._sell_queue_map.keys())
+        symbols_list = sorted(set(symbols_list))
+        for symbol_id in symbols_list:
+            title = '*** symbol: %s,  buy order' % symbol_id
+            queue = self._buy_queue_map.get(symbol_id, [])[:]
+            write_log(title, queue)
+            title = '*** symbol: %s,  sell order' % symbol_id
+            queue = self._sell_queue_map.get(symbol_id, [])[:]
+            write_log(title, queue)
+
         with open(self.depth_log_file, 'a') as f:
-            f.write('*** buy orders ***\n')
-            buy_queue = self._buy_queue[:]
-            for i in range(min(len(buy_queue), 20)):
-                order = heapq.heappop(buy_queue)
-                f.write('%(id)s %(timestamp)s %(symbol)s %(type)s %(price)s %(amount)s\n' % dict(
-                    id=order.id, timestamp=order.timestamp, symbol=order.symbol, type=order.TYPE,
-                    price=order.price, amount=order.amount))
-            f.write('*** sell orders ***\n')
-            sell_queue = self._sell_queue[:]
-            for i in range(min(len(sell_queue), 20)):
-                order = heapq.heappop(sell_queue)
-                f.write('%(id)s %(timestamp)s %(symbol)s %(type)s %(price)s %(amount)s\n' % dict(
-                    id=order.id, timestamp=order.timestamp, symbol=order.symbol, type=order.TYPE,
-                    price=order.price, amount=order.amount))
             f.write('\n\n')

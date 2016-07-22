@@ -8,7 +8,7 @@ from .exc import InvalidRequest, InvalidRequestBody
 from .manager import TradeManager, TradeStore
 from .message_queue import LocalQueue
 from .order import Order, OrderStore, OrderNotFound
-from .symbol import get_symbol_price, SymbolNotFound
+from .symbol import get_symbol_price_range, SymbolNotFound
 
 
 app = Flask(__name__)
@@ -41,7 +41,7 @@ def do_trade():
         raise InvalidRequest(
             'expected `amount` as an integer: 0 < amount < 1000. got: %s' % (amount,))
     try:
-        min_price, max_price = get_symbol_price(symbol_id)
+        min_price, max_price = get_symbol_price_range(symbol_id)
     except SymbolNotFound:
         raise InvalidRequest('unknown symbol: %s' % (symbol_id,))
     if price and (price < min_price or price > max_price):
