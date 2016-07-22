@@ -2,12 +2,19 @@ from datetime import datetime
 import heapq
 import logging
 import threading
-import uuid
 
 from .event import NewOrderEvent, CancelOrderEvent
 
 
 LOG = logging.getLogger(__name__)
+
+_id = 0
+
+
+def get_trade_id():
+    global _id
+    _id += 1
+    return _id
 
 
 class Trade(object):
@@ -22,7 +29,7 @@ class Trade(object):
 
     @staticmethod
     def do(order, price, amount):
-        id_ = uuid.uuid4().hex
+        id_ = get_trade_id()
         status = 'all_done'
         if order.amount > amount:
             status = 'partial_done'
@@ -30,7 +37,7 @@ class Trade(object):
 
     @staticmethod
     def cancel(order, orig_amount):
-        id_ = uuid.uuid4().hex
+        id_ = get_trade_id()
         status = 'left_cancel'
         if order.amount >= orig_amount:
             status = 'all_cancel'

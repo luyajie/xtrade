@@ -1,12 +1,21 @@
 from datetime import datetime
 import sys
-import uuid
+
+from .exc import InvalidRequest
 
 
 _support_types = {}
 
+_id = 0
 
-class InvalidOrderType(Exception):
+
+def get_order_id():
+    global _id
+    _id += 1
+    return _id
+
+
+class InvalidOrderType(InvalidRequest):
     pass
 
 
@@ -69,7 +78,7 @@ class Order(object):
     @staticmethod
     def factory(type_, symbol, amount, price=None):
         now = datetime.now()
-        order_id = uuid.uuid4().hex
+        order_id = get_order_id()
         if type_ not in _support_types:
             raise InvalidOrderType(type_)
         klass = _support_types[type_]
