@@ -68,7 +68,8 @@ class TradeStore(object):
 
 
 class TradeManager(threading.Thread):
-    def __init__(self, message_queue, trade_store, order_store):
+    def __init__(self, message_queue, trade_store, order_store, timeout=1,
+                 trade_log_file='trade.log', order_log_file='order.log', depth_log_file='depth.log'):
         super().__init__()
         self.daemon = True
         self._buy_queue = []
@@ -77,6 +78,10 @@ class TradeManager(threading.Thread):
         self.msg_queue = message_queue  # read_only
         self.trade_store = trade_store  # write_only
         self.order_store = order_store  # read_only
+        self.timeout = timeout
+        self.trade_log_file = trade_log_file
+        self.order_log_file = order_log_file
+        self.depth_log_file = depth_log_file
 
     def run(self):
         while True:
@@ -88,17 +93,28 @@ class TradeManager(threading.Thread):
                     self._running_trade()
                 elif isinstance(event, CancelOrderEvent):
                     self._remove_order(event.order_id)
+                elif event == 'timeout':
+                    LOG.debug('timeout')
                 else:
                     LOG.warning('unknonw event: %s', event)
             except Exception as e:
                 LOG.exception(e)
+            finally:
+                try:
+                    self._write_depth_log()
+                except Exception as e:
+                    LOG.error('error when write depth log: %s', e, exc_info=True)
 
     def _get_order(self, order_id):
         """Get the original order."""
         return self.order_store.get(order_id)
 
     def _get_event(self):
-        return self.msg_queue.get()
+        try:
+            return self.msg_queue.get(timeout=self.timeout)
+        except Exception as e:
+            # todo: more specific error handler
+            return 'timeout'
 
     def _add_order(self, order):
         self._order_map[order.id] = order
@@ -114,7 +130,9 @@ class TradeManager(threading.Thread):
             return
         LOG.info('%s canceled', order)
         orig_order = self._get_order(order_id)
-        self.trade_store.save(Trade.cancel(order, orig_order.amount))
+        trade = Trade.cancel(order, orig_order.amount)
+        self.trade_store.save(trade)
+        self._write_order_log(trade)
 
     def _running_trade(self):
         """Check all the BuyOrders and the SellOrders until no trade is available."""
@@ -167,10 +185,12 @@ class TradeManager(threading.Thread):
         buy_order_id, sell_order_id = buy_order.id, sell_order.id
         amount = min(sell_order.amount, buy_order.amount)
         price = self.get_trade_price(buy_order, sell_order)
+        self._write_trade_log(price, amount)
         LOG.debug('Trade available. amount: %s, price: %s', amount, price)
         buy_trade = Trade.do(buy_order, price, amount)
         self.trade_store.save(buy_trade)
         buy_order = buy_order.reduce(amount)
+        self._write_order_log(buy_trade)
         if buy_trade.is_done:
             self._order_map.pop(buy_order_id)
         else:
@@ -178,6 +198,7 @@ class TradeManager(threading.Thread):
         sell_trade = Trade.do(sell_order, price, amount)
         self.trade_store.save(sell_trade)
         sell_order = sell_order.reduce(amount)
+        self._write_order_log(sell_trade)
         if sell_trade.is_done:
             self._order_map.pop(sell_order_id)
         else:
@@ -189,3 +210,31 @@ class TradeManager(threading.Thread):
         """Return the price for this trade."""
         # todo: current price should return when both sell_order and buy_order are `market'
         return sell_order.price
+
+    def _write_trade_log(self, price, amount):
+        with open(self.trade_log_file, 'a') as f:
+            f.write('%s %s %s\n' % (datetime.now(), price, amount))
+
+    def _write_order_log(self, order_trade):
+        with open(self.order_log_file, 'a') as f:
+            f.write(
+                '%(timestamp)s %(order_id)s %(order_type)s %(price)s '
+                '%(amount)s %(status)s\n' % order_trade.__dict__)
+
+    def _write_depth_log(self):
+        with open(self.depth_log_file, 'a') as f:
+            f.write('*** buy orders ***\n')
+            buy_queue = self._buy_queue[:]
+            for i in range(min(len(buy_queue), 20)):
+                order = heapq.heappop(buy_queue)
+                f.write('%(id)s %(timestamp)s %(symbol)s %(type)s %(price)s %(amount)s\n' % dict(
+                    id=order.id, timestamp=order.timestamp, symbol=order.symbol, type=order.TYPE,
+                    price=order.price, amount=order.amount))
+            f.write('*** sell orders ***\n')
+            sell_queue = self._sell_queue[:]
+            for i in range(min(len(sell_queue), 20)):
+                order = heapq.heappop(sell_queue)
+                f.write('%(id)s %(timestamp)s %(symbol)s %(type)s %(price)s %(amount)s\n' % dict(
+                    id=order.id, timestamp=order.timestamp, symbol=order.symbol, type=order.TYPE,
+                    price=order.price, amount=order.amount))
+            f.write('\n\n')

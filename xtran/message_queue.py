@@ -13,8 +13,8 @@ class LocalQueue(MessageQueue):
     def __init__(self):
         self._queue = queue.Queue()
 
-    def get(self):
-        return self._queue.get()
+    def get(self, timeout=None):
+        return self._queue.get(timeout=timeout)
 
     def put(self, event):
         self._queue.put(event)
