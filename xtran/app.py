@@ -6,24 +6,30 @@ from flask import request, jsonify, Flask
 from .event import Event
 from .manager import TransactionManager
 from .message_queue import LocalQueue
-from .order import Order
+from .order import Order, InvalidOrderType
 
 
 app = Flask(__name__)
 queue = LocalQueue()
 
 
+@app.errorhandler(InvalidOrderType)
+def handle_invalid_type(e):
+    resp = jsonify({'status': 400, 'error': 'invalid type', 'message': str(e)})
+    resp.status_code = 400
+    return resp
+
+
 @app.route('/trade.do', methods=['POST'])
 def do_trade():
     try:
         data = request.get_json()
-        order = Order.factory(data['type'], data['symbol'], data['amount'], data.get('price', None))
-        order_id = uuid.uuid4()
-        queue.put(Event('new', order))
     except Exception as e:
         logging.exception(e)
         raise
-    return jsonify({'order_id': order_id, 'result': True})
+    order = Order.factory(data['type'], data['symbol'], data['amount'], data.get('price', None))
+    queue.put(Event('new', order))
+    return jsonify({'order_id': order.id, 'result': True})
 
 
 @app.route('/cancel', methods=['POST'])

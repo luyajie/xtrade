@@ -35,7 +35,6 @@ class TransactionManager(threading.Thread):
         return self.msg_queue.get()
 
     def _add_order(self, order):
-        print(order, order.is_sell)
         if order.is_sell:
             heapq.heappush(self._sell_queue, order)
         else:
@@ -52,12 +51,14 @@ class TransactionManager(threading.Thread):
                 break
             sell_order = self.pop_order(sell_queue)
             if sell_order is None:
-                self.push_order(buy_order)
+                self.push_order(buy_queue, buy_order)
                 break
             buy_order, sell_order = self._make_transaction(buy_order, sell_order)
             LOG.debug('buy: %s, sell: %s', buy_order, sell_order)
             if buy_order and sell_order:
                 LOG.debug('no transaction available')
+                self.push_order(buy_queue, buy_order)
+                self.push_order(sell_queue, sell_order)
                 break
             elif buy_order:
                 self.push_order(buy_queue, buy_order)
@@ -80,7 +81,7 @@ class TransactionManager(threading.Thread):
         heapq.heappush(queue, order)
 
     def _make_transaction(self, buy_order, sell_order):
-        if buy_order < sell_order:
+        if not buy_order.can_buy(sell_order):
             LOG.debug('%s less than %s', buy_order, sell_order)
             return buy_order, sell_order
         amount = min(sell_order.amount, buy_order.amount)
