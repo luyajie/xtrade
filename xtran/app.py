@@ -1,7 +1,7 @@
 import logging
 import time
 
-from flask import request, jsonify, Flask
+from flask import request, jsonify, Flask, current_app
 
 from .event import NewOrderEvent, CancelOrderEvent
 from .exc import InvalidRequest, InvalidRequestBody
@@ -12,9 +12,52 @@ from .symbol import get_symbol_price_range, SymbolNotFound
 
 
 app = Flask(__name__)
-queue = LocalQueue()
-trade_store = TradeStore()
-order_store = OrderStore()
+
+
+def get_queue():
+    return current_app.extensions['_message_queue']
+
+
+def install_queue(queue=None):
+    queue = queue or LocalQueue()
+    app.extensions['_message_queue'] = queue
+    return queue
+
+
+def uninstall_queue():
+    app.extensions.pop('_message_queue')
+
+
+def get_trade_store():
+    return current_app.extensions['_trade_store']
+
+
+def install_trade_store(store=None):
+    store = store or TradeStore()
+    app.extensions['_trade_store'] = store
+    return store
+
+
+def uninstall_trade_store():
+    app.extensions.pop('_trade_store')
+
+
+def get_order_store():
+    return current_app.extensions['_order_store']
+
+
+def install_order_store(store=None):
+    store = store or OrderStore()
+    app.extensions['_order_store'] = store
+    return store
+
+
+def uninstall_order_store():
+    app.extensions.pop('_order_store')
+
+
+def uninstall_all():
+    app.extensions = {}
 
 
 @app.errorhandler(InvalidRequest)
@@ -47,8 +90,8 @@ def do_trade():
     if price and (price < min_price or price > max_price):
         raise InvalidRequest('expected price between %s and %s, got: %s' % (min_price, max_price, price))
     order = Order.factory(type_, symbol_id, amount, price)
-    order_store.save(order)
-    queue.put(NewOrderEvent(order.id))
+    get_order_store().save(order)
+    get_queue().put(NewOrderEvent(order.id))
     return jsonify({'order_id': order.id, 'result': True})
 
 
@@ -60,11 +103,12 @@ def cancel_order():
         raise InvalidRequestBody('expected json-format body')
     order_id = data['order_id']
     try:
-        order_store.get(order_id)
+        get_order_store().get(order_id)
     except OrderNotFound:
         raise InvalidRequest('order not found: %s' % (order_id,))
-    queue.put(CancelOrderEvent(order_id))
+    get_queue().put(CancelOrderEvent(order_id))
     result = False
+    trade_store = get_trade_store()
     for i in range(10):
         # fixme: wait for the CancelEvent processed and will block the process
         time.sleep(0.1)
@@ -78,6 +122,9 @@ def cancel_order():
 def run_app():
     logging.basicConfig(level=logging.DEBUG)
 
+    queue = install_queue()
+    trade_store = install_trade_store()
+    order_store = install_order_store()
     manager = TradeManager(queue, trade_store, order_store)
     manager.start()
     app.run()

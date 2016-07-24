@@ -52,9 +52,8 @@ $ python test_client.py
 
 ## TEST
 
-现在测试的覆盖率很低,还需要补足.
-
 ```
+$ pip install -r requirements
 $ py.test tests/ -v -s
 ```
 
