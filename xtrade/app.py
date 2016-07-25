@@ -7,7 +7,7 @@ from .event import NewOrderEvent, CancelOrderEvent
 from .exc import InvalidRequest, InvalidRequestBody
 from .manager import TradeManager, TradeStore
 from .message_queue import LocalQueue
-from .order import Order, OrderStore, OrderNotFound
+from .order import OrderStore, OrderNotFound
 from .symbol import get_symbol_price_range, SymbolNotFound
 
 
@@ -91,7 +91,7 @@ def do_trade():
         raise InvalidRequest('expected price between %s and %s, got: %s' % (min_price, max_price, price))
     if int(price * 100) != price * 100:
         raise InvalidRequest('price should have no more than two floating points. got: %s' % (price,))
-    order = Order.factory(type_, symbol_id, amount, price)
+    order = get_order_store().factory(type_, symbol_id, amount, price)
     get_order_store().save(order)
     get_queue().put(NewOrderEvent(order.id))
     return jsonify({'order_id': order.id, 'result': True})

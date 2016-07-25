@@ -1,7 +1,7 @@
 import json
 from unittest import TestCase
 
-from xtrade.app import app, Order, NewOrderEvent, CancelOrderEvent
+from xtrade.app import app, NewOrderEvent, CancelOrderEvent
 from xtrade.app import install_queue, install_trade_store, install_order_store, uninstall_all
 from xtrade.app import get_queue, get_order_store, get_trade_store
 
@@ -113,7 +113,7 @@ class TestHandlers(TestCase):
             self.assertTrue('1001' in resp_data['message'])
 
     def test_cancel_order(self):
-        self.order_store.save(Order.factory('sell', 'WSCN', 10, price=100))
+        self.order_store.save(self.order_store.factory('sell', 'WSCN', 10, price=100))
         with app.test_client() as c:
             data = json.dumps({
                 'symbol': 'WSCN',

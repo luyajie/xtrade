@@ -1,18 +1,11 @@
 from datetime import datetime
 import sys
 
+from .db import db
 from .exc import InvalidRequest
 
 
 _support_types = {}
-
-_id = 0
-
-
-def get_order_id():
-    global _id
-    _id += 1
-    return _id
 
 
 class InvalidOrderType(InvalidRequest):
@@ -24,8 +17,21 @@ class OrderNotFound(Exception):
 
 
 class OrderStore(object):
+
+    @classmethod
+    def instance(cls):
+        try:
+            return cls._instance
+        except AttributeError:
+            raise Exception('No global instance installed for %s' % (cls.__name__,))
+
+    def install(self):
+        self.__class__._instance = self
+        return self
+
     def __init__(self):
         self._data = {}
+        self._id = 0
 
     def save(self, order):
         self._data[order.id] = order
@@ -35,6 +41,18 @@ class OrderStore(object):
             return self._data[order_id]
         except KeyError:
             raise OrderNotFound(order_id)
+
+    def get_id(self):
+        self._id += 1
+        return self._id
+
+    def factory(self, type_, symbol, amount, price=None):
+        if type_ not in _support_types:
+            raise InvalidOrderType(type_)
+        now = datetime.now()
+        order_id = self.get_id()
+        klass = _support_types[type_]
+        return klass(order_id, symbol, amount, now, price)
 
 
 class Order(object):
@@ -74,15 +92,6 @@ class Order(object):
     def register(cls):
         assert issubclass(cls, Order)
         _support_types[cls.TYPE] = cls
-
-    @staticmethod
-    def factory(type_, symbol, amount, price=None):
-        now = datetime.now()
-        order_id = get_order_id()
-        if type_ not in _support_types:
-            raise InvalidOrderType(type_)
-        klass = _support_types[type_]
-        return klass(order_id, symbol, amount, now, price)
 
 
 class SellOrder(Order):
