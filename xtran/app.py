@@ -89,6 +89,8 @@ def do_trade():
         raise InvalidRequest('unknown symbol: %s' % (symbol_id,))
     if price and (price < min_price or price > max_price):
         raise InvalidRequest('expected price between %s and %s, got: %s' % (min_price, max_price, price))
+    if int(price * 100) != price * 100:
+        raise InvalidRequest('price should have no more than two floating points. got: %s' % (price,))
     order = Order.factory(type_, symbol_id, amount, price)
     get_order_store().save(order)
     get_queue().put(NewOrderEvent(order.id))

@@ -73,18 +73,31 @@ class TestHandlers(TestCase):
             resp_data = json.loads(resp.data.decode())
             self.assertTrue('unknown symbol' in resp_data['message'])
 
-    def test_do_trade_with_invalid_price(self):
+    def test_do_trade_with_price_out_of_range(self):
         with app.test_client() as c:
             data = json.dumps({
                 'symbol': 'WSCN',
                 'type': 'sell',
                 'amount': 10,
-                'price': 111,
+                'price': 110.01,
             })
             resp = c.post('/trade.do', headers={'content-type': 'application/json'}, data=data)
             self.assertEqual(resp.status_code, 400, resp.data)
             resp_data = json.loads(resp.data.decode())
-            self.assertTrue('111' in resp_data['message'])
+            self.assertTrue('110.01' in resp_data['message'], resp_data['message'])
+
+    def test_do_trade_with_price_of_more_than_two_floating_points(self):
+        with app.test_client() as c:
+            data = json.dumps({
+                'symbol': 'WSCN',
+                'type': 'sell',
+                'amount': 10,
+                'price': 100.001,
+            })
+            resp = c.post('/trade.do', headers={'content-type': 'application/json'}, data=data)
+            self.assertEqual(resp.status_code, 400, resp.data)
+            resp_data = json.loads(resp.data.decode())
+            self.assertTrue('100.001' in resp_data['message'], resp_data['message'])
 
     def test_do_trade_with_invalid_amount(self):
         with app.test_client() as c:
