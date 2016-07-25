@@ -1,9 +1,9 @@
 import json
 from unittest import TestCase
 
-from xtran.app import app, Order, NewOrderEvent, CancelOrderEvent
-from xtran.app import install_queue, install_trade_store, install_order_store, uninstall_all
-from xtran.app import get_queue, get_order_store, get_trade_store
+from xtrade.app import app, Order, NewOrderEvent, CancelOrderEvent
+from xtrade.app import install_queue, install_trade_store, install_order_store, uninstall_all
+from xtrade.app import get_queue, get_order_store, get_trade_store
 
 
 class TestHandlers(TestCase):

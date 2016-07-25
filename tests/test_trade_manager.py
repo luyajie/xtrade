@@ -3,10 +3,10 @@ logging.basicConfig(level=logging.DEBUG)
 import time
 from unittest import TestCase
 
-from xtran.manager import TradeManager, TradeStore
-from xtran.message_queue import LocalQueue
-from xtran.event import NewOrderEvent, CancelOrderEvent
-from xtran.order import Order, OrderStore
+from xtrade.manager import TradeManager, TradeStore
+from xtrade.message_queue import LocalQueue
+from xtrade.event import NewOrderEvent, CancelOrderEvent
+from xtrade.order import Order, OrderStore
 
 
 class TestTradeManager(TestCase):
@@ -18,15 +18,15 @@ class TestTradeManager(TestCase):
         self.manager.start()
 
     def test_run(self):
-        o1 = Order.factory('sell', 'mu', 10, price=100)
+        o1 = Order.factory('sell', 'WSCN', 10, price=100)
         self.order_store.save(o1)
-        o2 = Order.factory('buy', 'mu', 10, price=90)
+        o2 = Order.factory('buy', 'WSCN', 10, price=90)
         self.order_store.save(o2)
-        o3 = Order.factory('sell', 'mu', 20, price=95)
+        o3 = Order.factory('sell', 'WSCN', 20, price=95)
         self.order_store.save(o3)
-        o4 = Order.factory('buy', 'mu', 10, price=96)
+        o4 = Order.factory('buy', 'WSCN', 10, price=96)
         self.order_store.save(o4)
-        o5 = Order.factory('buy', 'mu', 10, price=100)
+        o5 = Order.factory('buy', 'WSCN', 10, price=100)
         self.order_store.save(o5)
         self.queue.put(NewOrderEvent(o1.id))
         self.queue.put(NewOrderEvent(o2.id))
@@ -57,7 +57,7 @@ class TestTradeManager(TestCase):
         self.assertEqual(len(trades), 1)
         self.assertEqual(trades[0].status, 'all_cancel')
 
-        o6 = Order.factory('sell', 'mu', 5, price=80)
+        o6 = Order.factory('sell', 'WSCN', 5, price=80)
         self.order_store.save(o6)
         self.queue.put(NewOrderEvent(o6.id))
         self.queue.put(CancelOrderEvent(o2.id))

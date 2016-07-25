@@ -2,7 +2,7 @@ from datetime import datetime
 import heapq
 from unittest import TestCase
 
-from xtran.order import Order
+from xtrade.order import Order
 
 
 class TestOrder(TestCase):
