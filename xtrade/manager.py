@@ -5,6 +5,7 @@ import threading
 
 from .event import NewOrderEvent, CancelOrderEvent
 from .symbol import get_symbol_price_range, get_symbol_price
+from .db import TradeModel
 
 
 LOG = logging.getLogger(__name__)
@@ -28,22 +29,6 @@ class Trade(object):
         self.status = status
         self.timestamp = datetime.now()
 
-    @staticmethod
-    def do(order, price, amount):
-        id_ = get_trade_id()
-        status = 'all_done'
-        if order.amount > amount:
-            status = 'partial_done'
-        return Trade(id_, order.id, order.TYPE, price, amount, status)
-
-    @staticmethod
-    def cancel(order, orig_amount):
-        id_ = get_trade_id()
-        status = 'left_cancel'
-        if order.amount >= orig_amount:
-            status = 'all_cancel'
-        return Trade(id_, order.id, order.TYPE, order.price, order.amount, status)
-
     @property
     def is_done(self):
         return self.status.startswith('all')
@@ -58,14 +43,76 @@ class Trade(object):
 
 
 class TradeStore(object):
+
+    def get(self, order_id):
+        raise NotImplementedError()
+
+    def do_trade(self, order, price, amount):
+        status = 'all_done'
+        if order.amount > amount:
+            status = 'partial_done'
+        trade = Trade(self.next_id, order.id, order.TYPE, price, amount, status)
+        self._save(trade)
+        return trade
+
+    def cancel_order(self, order, orig_amount):
+        status = 'left_cancel'
+        if order.amount >= orig_amount:
+            status = 'all_cancel'
+        trade = Trade(self.next_id, order.id, order.TYPE, order.price, order.amount, status)
+        self._save(trade)
+        return trade
+
+    def _save(self, trade):
+        raise NotImplementedError()
+
+    @property
+    def next_id(self):
+        raise NotImplementedError()
+
+
+class MemTradeStore(TradeStore):
+
     def __init__(self):
         self._data = {}  # order_id => [Trade]
 
-    def save(self, trade):
-        self._data.setdefault(trade.order_id, []).append(trade)
-
     def get(self, order_id):
         return self._data.get(order_id, [])
+
+    def _save(self, trade):
+        self._data.setdefault(trade.order_id, []).append(trade)
+
+    @property
+    def next_id(self):
+        return get_trade_id()
+
+
+class DBTradeStore(TradeStore):
+    def __init__(self, db):
+        self.db = db
+
+    def get(self, order_id):
+        trades = self.db.session.query(TradeModel).filter(TradeModel.order_id == order_id).all()
+        return [self._decode(t) for t in trades]
+
+    def _decode(self, trade_model):
+        return Trade(trade_model.id, trade_model.order_id, trade_model.order_type,
+                     trade_model.price, trade_model.amount, trade_model.status)
+
+    def _encode(self, trade):
+        return TradeModel(id=trade.id, order_id=trade.order_id, order_type=trade.order_type,
+                          price=trade.price, amount=trade.amount, status=trade.status,
+                          timestamp=trade.timestamp)
+
+    def _save(self, trade):
+        self.db.session.add(self._encode(trade))
+        self.db.session.commit()
+
+    @property
+    def next_id(self):
+        trade = self.db.session.query(TradeModel).order_by(TradeModel.id.desc()).first()
+        current_id = trade and trade.id or 0
+        return current_id + 1
 
 
 class TradeManager(threading.Thread):
@@ -136,8 +183,7 @@ class TradeManager(threading.Thread):
             return
         LOG.info('%s canceled', order)
         orig_order = self._get_order(order_id)
-        trade = Trade.cancel(order, orig_order.amount)
-        self.trade_store.save(trade)
+        trade = self.trade_store.cancel_order(order, orig_order.amount)
         self._write_order_log(trade)
 
     def _running_trade(self, symbol_id):
@@ -197,16 +243,14 @@ class TradeManager(threading.Thread):
         self._symbol_price_map[buy_order.symbol] = price
         self._write_trade_log(price, amount)
         LOG.debug('Trade available. amount: %s, price: %s', amount, price)
-        buy_trade = Trade.do(buy_order, price, amount)
-        self.trade_store.save(buy_trade)
+        buy_trade = self.trade_store.do_trade(buy_order, price, amount)
         buy_order = buy_order.reduce(amount)
         self._write_order_log(buy_trade)
         if buy_trade.is_done:
             self._order_map.pop(buy_order_id)
         else:
             self._order_map[buy_order_id] = buy_order
-        sell_trade = Trade.do(sell_order, price, amount)
-        self.trade_store.save(sell_trade)
+        sell_trade = self.trade_store.do_trade(sell_order, price, amount)
         sell_order = sell_order.reduce(amount)
         self._write_order_log(sell_trade)
         if sell_trade.is_done:

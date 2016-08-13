@@ -5,12 +5,13 @@ from xtrade.app import app, NewOrderEvent, CancelOrderEvent
 from xtrade.app import install_queue, install_trade_store, install_order_store, uninstall_all
 from xtrade.app import get_queue, get_order_store, get_trade_store
 from xtrade.order import MemOrderStore
+from xtrade.manager import MemTradeStore
 
 
 class TestHandlers(TestCase):
     def setUp(self):
         self.queue = install_queue()
-        self.trade_store = install_trade_store()
+        self.trade_store = install_trade_store(MemTradeStore())
         self.order_store = install_order_store(MemOrderStore())
 
     def tearDown(self):

@@ -6,7 +6,7 @@ from flask import request, jsonify, Flask, current_app
 
 from .event import NewOrderEvent, CancelOrderEvent
 from .exc import InvalidRequest, InvalidRequestBody
-from .manager import TradeManager, TradeStore
+from .manager import TradeManager, DBTradeStore
 from .message_queue import LocalQueue
 from .order import OrderStore, OrderNotFound
 from .symbol import get_symbol_price_range, SymbolNotFound
@@ -136,9 +136,10 @@ def run_app():
     db.create_all()
     install_order_store(DBOrderStore(db))
     order_store = DBOrderStore(db)
+    install_trade_store(DBTradeStore(db))
+    trade_store = DBTradeStore(db)
 
     queue = install_queue()
-    trade_store = install_trade_store()
     manager = TradeManager(queue, trade_store, order_store)
     manager.start()
     app.run()
