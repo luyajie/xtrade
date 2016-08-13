@@ -1,5 +1,10 @@
 .idea
 *.pyc
 *.log
+*.db
 .python-version
 .cache
+
+# the default config file
+config.py
+

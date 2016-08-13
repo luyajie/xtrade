@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from flask import request, jsonify, Flask, current_app
@@ -91,8 +92,7 @@ def do_trade():
         raise InvalidRequest('expected price between %s and %s, got: %s' % (min_price, max_price, price))
     if int(price * 100) != price * 100:
         raise InvalidRequest('price should have no more than two floating points. got: %s' % (price,))
-    order = get_order_store().factory(type_, symbol_id, amount, price)
-    get_order_store().save(order)
+    order = get_order_store().create(type_, symbol_id, amount, price)
     get_queue().put(NewOrderEvent(order.id))
     return jsonify({'order_id': order.id, 'result': True})
 
@@ -124,9 +124,21 @@ def cancel_order():
 def run_app():
     logging.basicConfig(level=logging.DEBUG)
 
+    app.config.from_object(os.environ.get('XTRADE_CONFIG') or 'config')
+
+    from .order import DBOrderStore
+    from .db import db
+
+    db.init_app(app)
+    # todo: why this required?
+    db.app = app
+
+    db.create_all()
+    install_order_store(DBOrderStore(db))
+    order_store = DBOrderStore(db)
+
     queue = install_queue()
     trade_store = install_trade_store()
-    order_store = install_order_store()
     manager = TradeManager(queue, trade_store, order_store)
     manager.start()
     app.run()

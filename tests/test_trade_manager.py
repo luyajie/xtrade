@@ -1,12 +1,13 @@
-import logging
-logging.basicConfig(level=logging.DEBUG)
 import time
 from unittest import TestCase
 
 from xtrade.manager import TradeManager, TradeStore
 from xtrade.message_queue import LocalQueue
 from xtrade.event import NewOrderEvent, CancelOrderEvent
-from xtrade.order import Order, OrderStore
+from xtrade.order import MemOrderStore as OrderStore
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 
 class TestTradeManager(TestCase):
@@ -18,16 +19,11 @@ class TestTradeManager(TestCase):
         self.manager.start()
 
     def test_run(self):
-        o1 = self.order_store.factory('sell', 'WSCN', 10, price=100)
-        self.order_store.save(o1)
-        o2 = self.order_store.factory('buy', 'WSCN', 10, price=90)
-        self.order_store.save(o2)
-        o3 = self.order_store.factory('sell', 'WSCN', 20, price=95)
-        self.order_store.save(o3)
-        o4 = self.order_store.factory('buy', 'WSCN', 10, price=96)
-        self.order_store.save(o4)
-        o5 = self.order_store.factory('buy', 'WSCN', 10, price=100)
-        self.order_store.save(o5)
+        o1 = self.order_store.create('sell', 'WSCN', 10, price=100)
+        o2 = self.order_store.create('buy', 'WSCN', 10, price=90)
+        o3 = self.order_store.create('sell', 'WSCN', 20, price=95)
+        o4 = self.order_store.create('buy', 'WSCN', 10, price=96)
+        o5 = self.order_store.create('buy', 'WSCN', 10, price=100)
         self.queue.put(NewOrderEvent(o1.id))
         self.queue.put(NewOrderEvent(o2.id))
         self.queue.put(NewOrderEvent(o3.id))
@@ -57,8 +53,7 @@ class TestTradeManager(TestCase):
         self.assertEqual(len(trades), 1)
         self.assertEqual(trades[0].status, 'all_cancel')
 
-        o6 = self.order_store.factory('sell', 'WSCN', 5, price=80)
-        self.order_store.save(o6)
+        o6 = self.order_store.create('sell', 'WSCN', 5, price=80)
         self.queue.put(NewOrderEvent(o6.id))
         self.queue.put(CancelOrderEvent(o2.id))
         time.sleep(0.1)

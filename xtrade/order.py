@@ -1,7 +1,7 @@
 from datetime import datetime
 import sys
 
-from .db import db
+from .db import db, OrderModel
 from .exc import InvalidRequest
 
 
@@ -29,11 +29,37 @@ class OrderStore(object):
         self.__class__._instance = self
         return self
 
+    def get(self, order_id):
+        raise NotImplementedError()
+
+    def create(self, type_, symbol, amount, price=None):
+        order = self._factory(type_, symbol, amount, price)
+        self._save(order)
+        return order
+
+    def _save(self, order):
+        raise NotImplementedError()
+
+    def _factory(self, type_, symbol, amount, price=None):
+        if type_ not in _support_types:
+            raise InvalidOrderType(type_)
+        now = datetime.now()
+        order_id = self.next_id
+        klass = _support_types[type_]
+        return klass(order_id, symbol, amount, now, price)
+
+    @property
+    def next_id(self):
+        raise NotImplementedError()
+
+
+class MemOrderStore(OrderStore):
+
     def __init__(self):
         self._data = {}
         self._id = 0
 
-    def save(self, order):
+    def _save(self, order):
         self._data[order.id] = order
 
     def get(self, order_id):
@@ -42,17 +68,33 @@ class OrderStore(object):
         except KeyError:
             raise OrderNotFound(order_id)
 
-    def get_id(self):
+    @property
+    def next_id(self):
         self._id += 1
         return self._id
 
-    def factory(self, type_, symbol, amount, price=None):
-        if type_ not in _support_types:
-            raise InvalidOrderType(type_)
-        now = datetime.now()
-        order_id = self.get_id()
-        klass = _support_types[type_]
-        return klass(order_id, symbol, amount, now, price)
+
+class DBOrderStore(OrderStore):
+    def __init__(self, db):
+        self.db = db
+
+    @property
+    def next_id(self):
+        order = self.db.session.query(OrderModel).order_by(OrderModel.id.desc()).first()
+        current_id = order and order.id or 0
+        return current_id + 1
+
+    def get(self, order_id):
+        order_model = self.db.session.query(OrderModel).filter(OrderModel.id == order_id).one()
+        klass = _support_types[order_model.type]
+        return klass(order_id, order_model.symbol, order_model.amount,
+                     order_model.timestamp, order_model.price)
+
+    def _save(self, order):
+        self.db.session.add(
+            OrderModel(id=order.id, symbol=order.symbol, amount=order.amount,
+                       type=order.TYPE, price=order.price, timestamp=order.timestamp))
+        self.db.session.commit()
 
 
 class Order(object):
